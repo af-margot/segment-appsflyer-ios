@@ -1,11 +1,15 @@
 <img src="https://www.appsflyer.com/wp-content/uploads/2016/11/logo-1.svg"  width="200">
 
 # AppsFlyer integration for Segment.
-This is a Segment wrapper for AppsFlyer SDK framework.
+
+## This is a Segment wrapper for AppsFlyer SDK that is built with iOS SDK v6.2.0. 
+
+[![Version](https://img.shields.io/cocoapods/v/segment-appsflyer-ios.svg?style=flat)](http://cocoapods.org/pods/segment-appsflyer-ios)
+[![Carthage compatible](https://img.shields.io/badge/Carthage-compatible-4BC51D.svg?style=flat)](https://github.com/Carthage/Carthage)
 
 
 ----------
-In order for us to provide optimal support, we would kindly ask you to submit any issues to support@appsflyer.com
+🛠 In order for us to provide optimal support, we would kindly ask you to submit any issues to support@appsflyer.com
 
 *When submitting an issue please specify your AppsFlyer sign-up (account) email , your app ID , production steps, logs, code snippets and any additional relevant information.*
 
@@ -15,13 +19,14 @@ In order for us to provide optimal support, we would kindly ask you to submit an
 ## Table of content
 
 - [Installation](#installation)
-
 - [Usage](#usage) 
   - [Objective-C](#usage-obj-c)
   - [Swift](#usage-swift)
 - [Get Conversion Data](#getconversiondata)
   - [Objective-C](#gcd-obj-c)
   - [Swift](#gcd-swift)
+- [Unified Deep linking](#DDL)
+    - [Swift](#ddl-swift)
 - [Install Attributed event](#install_attributed)
 - [Additional AppsFlyer SDK setup](#additional_setup)
 - [Examples](#examples) 
@@ -29,11 +34,34 @@ In order for us to provide optimal support, we would kindly ask you to submit an
 
 ## <a id="installation">Installation
 
-To install the segment-appsflyer-ios integration, simply add this line to your [CocoaPods](http://cocoapods.org) `Podfile`:
+### Cocoapods
 
+To install the segment-appsflyer-ios integration:
+
+1. Simply add this line to your [CocoaPods](http://cocoapods.org) `Podfile`:
+
+**Production** version: 
 ```ruby
-pod 'segment-appsflyer-ios'
+pod 'segment-appsflyer-ios', '6.2.0'
 ```
+
+**Strict mode SDK** version: 
+```ruby
+pod 'segment-appsflyer-ios/Strict', '6.2.0'
+```
+Use the strict mode SDK to completely remove IDFA collection functionality and AdSupport framework dependencies (for example, when developing apps for kids).
+
+2. Run `pod isntall` in the project directory
+
+### Carthage
+
+[Carthage](https://github.com/Carthage/Carthage) is a decentralized dependency manager that builds your dependencies and provides you with binary frameworks. To integrate AppsFlyer and Segment into your Xcode project using Carthage, specify it in your `Cartfile`:
+
+**Production** version: 
+```ogdl
+github "AppsFlyerSDK/segment-appsflyer-ios" "6.2.0"
+```
+
 
 ## <a id="usage"> Usage
 
@@ -50,49 +78,90 @@ Open `AppDelegate.h` and add:
 In `AppDelegate.m` ➜ `didFinishLaunchingWithOptions`:
 
 ```objective-c
-SEGAnalyticsConfiguration *config = [SEGAnalyticsConfiguration configurationWithWriteKey:@"SEGMENT_KEY"];
+
+    // For ApsFlyer debug logs
+    [AppsFlyerLib shared].isDebug = YES;
+
+    // Getting user consent dialog. Please read https://support.appsflyer.com//hc/en-us/articles/207032066#integration-35-support-apptrackingtransparency-att
+    if (@available(iOS 14, *)) {
+        [[AppsFlyerLib shared] waitForAdvertisingIdentifierWithTimeoutInterval:60];
+        [ATTrackingManager requestTrackingAuthorizationWithCompletionHandler:^(ATTrackingManagerAuthorizationStatus status) {
+            //....
+        }];
+    }
+    /*
+     Based on your needs you can either pass a delegate to process deferred
+     and direct deeplinking callbacks or disregard them.
+     If you choose to use the delegate, see extension to this class below
+     */
+    SEGAppsFlyerIntegrationFactory* factoryNoDelegate = [SEGAppsFlyerIntegrationFactory instance];
+//    SEGAppsFlyerIntegrationFactory* factoryWithDelegate = [SEGAppsFlyerIntegrationFactory createWithLaunchDelegate:self];
     
-    [config use:[SEGAppsFlyerIntegrationFactory instance]]; // this line may need to be replaced if you would like to get conversion and deep link data in the app.
-    
+    SEGAnalyticsConfiguration *config = [SEGAnalyticsConfiguration configurationWithWriteKey:@"WYsuyFINOKZuQyQAGn5JQoCgIdhOI146"];
+    [config use:factoryNoDelegate];
+//    [config use:factoryWithDelegate];  // use this if you want to get conversion data in the app. Read more in the integration guide
     config.enableAdvertisingTracking = YES;       //OPTIONAL
     config.trackApplicationLifecycleEvents = YES; //OPTIONAL
     config.trackDeepLinks = YES;                  //OPTIONAL
     config.trackPushNotifications = YES;          //OPTIONAL
-    config.trackAttributionData = YES;            //OPTIONAL   
+    config.trackAttributionData = YES;            //OPTIONAL
     [SEGAnalytics debug:YES];                     //OPTIONAL
     [SEGAnalytics setupWithConfiguration:config];
 ```
 
 ### <a id="usage-swift"> Usage - Swift
 
-Open/Create `<Your-App-name>-Bridging-Header.h`  and add:
+1. Open/Create `<Your-App-name>-Bridging-Header.h`  and add:
 
 ```objective-c
 #import "SEGAppsFlyerIntegrationFactory.h"
 ```
+![image](https://user-images.githubusercontent.com/50541317/90022182-e5768900-dcba-11ea-8bfd-180cc6f28700.png)
 
-Open `AppDelegate.swift` ➜ `didFinishLaunchingWithOptions` and add:
+2. Add path to the Bridging header under Build Settings > Swift Compiler - General > Objective-C Bridging Header
+![image](https://user-images.githubusercontent.com/50541317/90022174-e1e30200-dcba-11ea-8785-0303aebe75e2.png)
+
+3. Open `AppDelegate.swift` and add:
 
 ```swift
-
 import Analytics
-
-//...
-
-let config:Analytics.SEGAnalyticsConfiguration = SEGAnalyticsConfiguration(writeKey: "SEGMENT_KEY")
-
-        config.use(SEGAppsFlyerIntegrationFactory())  // this line may need to be replaced if you would like to get conversion and deep link data in the app.
-        config.enableAdvertisingTracking = true       //OPTIONAL
-        config.trackApplicationLifecycleEvents = true //OPTIONAL
-        config.trackDeepLinks = true                  //OPTIONAL
-        config.trackPushNotifications = true          //OPTIONAL
-        config.trackAttributionData = true            //OPTIONAL
-
-        Analytics.SEGAnalytics.debug(true)
-        Analytics.SEGAnalytics.setup(with: config)
+import AppsFlyerLib
 ```
 
+4. In `didFinishLaunchingWithOptions` add:
+``` 
+    // For AppsFLyer debug logs uncomment the line below
+    // AppsFlyerLib.shared().isDebug = true
 
+    // If you want to collect IDFA, please add the code below and read https://support.appsflyer.com//hc/en-us/articles/207032066#integration-35-support-apptrackingtransparency-att
+    if #available(iOS 14, *) {
+        AppsFlyerLib.shared().waitForAdvertisingIdentifier(withTimeoutInterval: 60)
+        ATTrackingManager.requestTrackingAuthorization(completionHandler: { (status) in
+            // ...
+        })
+    }
+
+    /*
+     Based on your needs you can either pass a delegate to process deferred
+     and direct deeplinking callbacks or disregard them.
+     If you choose to use the delegate, see extension to this class below
+     */
+//    let factoryWithDelegate : SEGAppsFlyerIntegrationFactory = SEGAppsFlyerIntegrationFactory.create(withLaunch: self)
+    let factoryNoDelegate = SEGAppsFlyerIntegrationFactory()
+    
+    // Segment initialization
+    let config = AnalyticsConfiguration(writeKey: "SEGMENT_KEY")
+//    config.use(factoryWithDelegate)  // use this if you want to get conversion data in the app. Read more in the integration guide
+    config.use(factoryNoDelegate)
+    config.enableAdvertisingTracking = true       //OPTIONAL
+    config.trackApplicationLifecycleEvents = true //OPTIONAL
+    config.trackDeepLinks = true                  //OPTIONAL
+    config.trackPushNotifications = true          //OPTIONAL
+    config.trackAttributionData = true            //OPTIONAL
+    
+    Analytics.debug(false)
+    Analytics.setup(with: config)
+```
 
 AppsFlyer integration responds to ```identify``` call.  To read more about it, visit [Segment identify method documentation](https://segment.com/docs/libraries/ios/#identify).
 In identify call ```traits``` dictionary  ```setCustomerUserID``` and ```currencyCode```
@@ -108,15 +177,15 @@ In identify call ```traits``` dictionary  ```setCustomerUserID``` and ```currenc
     
   In order to get Conversion Data you need to:
   
-  1. Add `SEGAppsFlyerTrackerDelegate` protocol to your AppDelegate.h (or other) class
+  1. Add `SEGAppsFlyerLibDelegate` protocol to your AppDelegate.h (or other) class
 ```
 #import <UIKit/UIKit.h>
 #import "SEGAppsFlyerIntegrationFactory.h"
 
-@interface AppDelegate : UIResponder <UIApplicationDelegate, SEGAppsFlyerTrackerDelegate>
+@interface AppDelegate : UIResponder <UIApplicationDelegate, SEGAppsFlyerLibDelegate>
 ```
   2. Pass AppDelegate (or other) class when configuring Segment Analytics with AppsFlyer. Change line `[config use:[SEGAppsFlyerIntegrationFactory instance]];` to `[config use:[SEGAppsFlyerIntegrationFactory createWithLaunchDelegate:self]];`
-  3. In the class passed to the method above (AppDelegate.m by default) implement methods of the `SEGAppsFlyerTrackerDelegate` protocol. See sample code below:
+  3. In the class passed to the method above (AppDelegate.m by default) implement methods of the `SEGAppsFlyerLibDelegate` protocol. See sample code below:
   
 ```
 #import "AppDelegate.h"
@@ -127,7 +196,7 @@ In identify call ```traits``` dictionary  ```setCustomerUserID``` and ```currenc
 
 @implementation AppDelegate
 
-- (void)onConversionDataReceived:(NSDictionary *)installData{
+-(void)onConversionDataSuccess:(NSDictionary*) installData {
     BOOL first_launch_flag = [[installData objectForKey:@"is_first_launch"] boolValue];
     NSString *status = [installData objectForKey:@"af_status"];
     
@@ -147,7 +216,7 @@ In identify call ```traits``` dictionary  ```setCustomerUserID``` and ```currenc
 /**
  Any errors that occurred during the conversion request.
  */
-- (void)onConversionDataRequestFailure:(NSError *)error{
+-(void)onConversionDataFail:(NSError *) error {
     NSLog(@"%@", [error description]);
 };
 
@@ -176,27 +245,27 @@ In identify call ```traits``` dictionary  ```setCustomerUserID``` and ```currenc
   
   In order to get Conversion Data you need to:
   
-  1. Add `SEGAppsFlyerTrackerDelegate` protocol to your AppDelegate (or other) class
-  2. Pass AppDelegate (or other) class when configuring Segment Analytics with AppsFlyer. Change line `config.use(SEGAppsFlyerIntegrationFactory())` to `config.use(SEGAppsFlyerIntegrationFactory.create(withLaunch: self))`
-  3. Implement methods of the protocol. See sample code below:
+  1. Add `SEGAppsFlyerLibDelegate` protocol to your AppDelegate (or other) class
+  2. Pass AppDelegate (or other) class when configuring Segment Analytics with AppsFlyer. If you use sample code from above, change line `config.use(factoryNoDelegate)` to `config.use(factoryWithDelegate)`
+  3. Implement methods of the protocol in the class, passed as a delegate. See sample code below where AppDelegate is used for that:
   
   ```
-  class AppDelegate: UIResponder, UIApplicationDelegate, SEGAppsFlyerTrackerDelegate {
+  class AppDelegate: UIResponder, UIApplicationDelegate, SEGAppsFlyerLibDelegate {
     
     var window: UIWindow?
     
-    func onConversionDataReceived(_ installData: [AnyHashable : Any]) {
-        guard let first_launch_flag = installData["is_first_launch"] as? Int else {
+    func onConversionDataSuccess(_ conversionInfo: [AnyHashable : Any]) {
+        guard let first_launch_flag = conversionInfo["is_first_launch"] as? Int else {
             return
         }
         
-        guard let status = installData["af_status"] as? String else {
+        guard let status = conversionInfo["af_status"] as? String else {
             return
         }
         
         if(first_launch_flag == 1) {
             if(status == "Non-organic") {
-                if let media_source = installData["media_source"] , let campaign = installData["campaign"]{
+                if let media_source = conversionInfo["media_source"] , let campaign = conversionInfo["campaign"]{
                     print("This is a Non-Organic install. Media source: \(media_source) Campaign: \(campaign)")
                 }
             } else {
@@ -213,14 +282,37 @@ In identify call ```traits``` dictionary  ```setCustomerUserID``` and ```currenc
           print("\(data)")
         }
     }
-    func onConversionDataRequestFailure(_ error: Error?) {
-    }
-    
+
+   func onConversionDataFail(_ error: Error) {
+        }
+
     func onAppOpenAttributionFailure(_ error: Error?) {
     }
     //rest of you AppDelegate code
   }
   ```
+
+## <a id="DDL"> Unified Deep linking
+### <a id="ddl-swift"> Swift
+In order to use Unified Deep linking you need to:
+  
+  1. Add `SEGAppsFlyerDeepLinkDelegate` protocol to your AppDelegate (or other) class
+  2. Pass AppDelegate (or other) class when configuring Segment Analytics with AppsFlyer. From the sample code above, change  factoryWithDelegate to :
+  ```
+  let factoryWithDelegate: SEGAppsFlyerIntegrationFactory = SEGAppsFlyerIntegrationFactory.create(withLaunch: self, andDeepLinkDelegate: self)
+  ```
+
+  3. Implement methods of the protocol in the class, passed as a delegate. See sample code below where AppDelegate is used for that:
+  
+```
+extension AppDelegate: SEGAppsFlyerDeepLinkDelegate {
+    func didResolveDeepLink(_ result: DeepLinkResult) {
+        print(result)
+    }
+}
+
+```
+
 ## <a id="install_attributed"> Install Attributed event
 
 If you are working with networks that don't allow passing user level data to 3rd parties, you will need to apply code to filter out these networks before calling
@@ -252,11 +344,11 @@ If you are working with networks that don't allow passing user level data to 3rd
         /// To set Apple App ID and AppsFlyer Dev Key use Segment dashboard
         /// ...
         /// Enable ESP support for specific URLs
-        [[AppsFlyerTracker sharedTracker] setResolveDeepLinkURLs:@[@"afsdktests.com"]];
+        [[AppsFlyerLib shared] setResolveDeepLinkURLs:@[@"afsdktests.com"]];
         /// Disable printing SDK messages to the console log
-        [[AppsFlyerTracker sharedTracker] setIsDebug:NO];
+        [[AppsFlyerLib shared]  setIsDebug:NO];
         /// `OneLink ID` from OneLink configuration
-        [[AppsFlyerTracker sharedTracker] setAppInviteOneLink:@"one_link_id"];
+        [[AppsFlyerLib shared]  setAppInviteOneLink:@"one_link_id"];
     }
 }
 ```

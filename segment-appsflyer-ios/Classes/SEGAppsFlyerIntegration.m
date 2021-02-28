@@ -2,12 +2,11 @@
 //  SEGAppsFlyerIntegration.m
 //  AppsFlyerSegmentiOS
 //
-//  Created by Golan/Maxim Shoustin on 5/17/16.
+//  Created by Margot Guetta/Maxim Shoustin on 5/17/16.
 //  Copyright © 2016 AppsFlyer. All rights reserved.
 //
 
 #import "SEGAppsFlyerIntegration.h"
-#import <Analytics/SEGAnalyticsUtils.h>
 #import "SEGAppsFlyerIntegrationFactory.h"
 
 @implementation SEGAppsFlyerIntegration
@@ -19,14 +18,27 @@
         NSString *afDevKey = [self.settings objectForKey:@"appsFlyerDevKey"];
         NSString *appleAppId = [self.settings objectForKey:@"appleAppID"];
         
-        self.appsflyer = [AppsFlyerTracker sharedTracker];
+        self.appsflyer = [AppsFlyerLib shared];
         [self.appsflyer setAppsFlyerDevKey:afDevKey];
         [self.appsflyer setAppleAppID:appleAppId];
+        //self.appsflyer.isDebug = true;
+
         self.analytics = analytics;
-        if ([self trackAttributionData]) {
+        if ([self logAttributionData]) {
             self.appsflyer.delegate = self;
         }
-        //self.appsflyer.isDebug = YES;
+        if (_segDLDelegate)
+            self.appsflyer.deepLinkDelegate = self;
+        
+        // For Segment React Native. We should call our applicationDidBecomeActive in case we were initialized too late and missed the first launch
+        dispatch_async(dispatch_get_main_queue(), ^{
+            BOOL alreadyActive = [[UIApplication sharedApplication] applicationState] == UIApplicationStateActive;
+            // for regular Segment integration alreadyActive should always be false
+            if (alreadyActive) {
+                [self applicationDidBecomeActive];
+                NSLog(@"Segment React Native AppsFlye rintegration is used, sending first launch manually");
+            }
+        });
     }
     return self;
 }
@@ -34,13 +46,23 @@
 
 - (instancetype)initWithSettings:(NSDictionary *)settings
                    withAnalytics:(SEGAnalytics *)analytics
-                     andDelegate:(id<SEGAppsFlyerTrackerDelegate>) delegate
+                     andDelegate:(id<SEGAppsFlyerLibDelegate>) delegate
 {
     self.segDelegate = delegate;
     return [self initWithSettings:settings withAnalytics:analytics];
 }
 
-- (instancetype)initWithSettings:(NSDictionary *)settings withAppsflyer:(AppsFlyerTracker *)aAppsflyer {
+- (instancetype)initWithSettings:(NSDictionary *)settings
+                   withAnalytics:(SEGAnalytics *)analytics
+                     andDelegate:(id<SEGAppsFlyerLibDelegate>) delegate
+                    andDeepLinkDelegate:(id<AppsFlyerDeepLinkDelegate>)DLDelegate
+{
+    self.segDelegate = delegate;
+    self.segDLDelegate = DLDelegate;
+    return [self initWithSettings:settings withAnalytics:analytics];
+}
+
+- (instancetype)initWithSettings:(NSDictionary *)settings withAppsflyer:(AppsFlyerLib *)aAppsflyer {
     
     if (self = [super init]) {
         self.settings = settings;
@@ -50,9 +72,13 @@
         NSString *appleAppId = [self.settings objectForKey:@"appleAppID"];
         [self.appsflyer setAppsFlyerDevKey:afDevKey];
         [self.appsflyer setAppleAppID:appleAppId];
+       // self.appsflyer.isDebug = true;
         
-        if ([self trackAttributionData]) {
+        if ([self logAttributionData]) {
             self.appsflyer.delegate = self;
+        }
+        if (_segDLDelegate) {
+            self.appsflyer.deepLinkDelegate = self;
         }
         
     }
@@ -62,7 +88,7 @@
 
 
 -(void) applicationDidBecomeActive {
-    [self trackLaunch];
+    [self start];
 }
 
 
@@ -108,15 +134,15 @@
     
 }
 
-- (void) trackLaunch {
-    [self.appsflyer trackAppLaunch];
+- (void) start {
+    [self.appsflyer start];
 }
 
 
 - (void)track:(SEGTrackPayload *)payload
 {
     if (payload.properties != nil){
-        SEGLog(@"trackEvent: %@", payload.properties);
+        SEGLog(@"logEvent: %@", payload.properties);
     }
     
     // Extract the revenue / currency from the properties passed in to us with an "af_" prefix
@@ -131,12 +157,12 @@
             [af_payload_properties setObject:currency forKey:@"af_currency"];
         }
         
-        [self.appsflyer trackEvent:payload.event withValues:af_payload_properties];
+        [self.appsflyer logEvent:payload.event withValues:af_payload_properties];
     }
     
     else {
-        // Track the raw event.
-        [self.appsflyer trackEvent:payload.event withValues:payload.properties];
+        // Log the raw event.
+        [self.appsflyer logEvent:payload.event withValues:payload.properties];
     }
 }
 
@@ -165,26 +191,30 @@
     return nil;
 }
 
--(void)onConversionDataReceived:(NSDictionary *)installData
++(NSString *) validateNil: (NSString *) value
 {
+    return value ?((value != (id)[NSNull null]) ?  value: @"" ) : @"";
+}
+
+- (void)onConversionDataSuccess:(nonnull NSDictionary *)conversionInfo {
     NSString *const key = @"AF_Install_Attr_Sent";
     NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
     BOOL installAttrSent = [userDefaults boolForKey:key];
     
     if(!installAttrSent){
-
-        if(_segDelegate && [_segDelegate respondsToSelector:@selector(onConversionDataReceived:)]) {
-          [_segDelegate onConversionDataReceived:installData];
+  [userDefaults setBool:YES forKey:key];
+        if(_segDelegate && [_segDelegate respondsToSelector:@selector(onConversionDataSuccess:)]) {
+          [_segDelegate onConversionDataSuccess:conversionInfo];
         }
-
         NSDictionary *campaign = @{
-                                   @"source": installData[@"media_source"] ? installData[@"media_source"] : @"",
-                                   @"name": installData[@"campaign"] ? installData[@"campaign"] : @"",
-                                   @"adGroup": installData[@"adgroup"] ? installData[@"adgroup"] : @""
-                                   };
+                @"source": [SEGAppsFlyerIntegration validateNil : conversionInfo[@"media_source"]],
+                @"name": [SEGAppsFlyerIntegration validateNil : conversionInfo[@"campaign"]],
+                @"ad_group": [SEGAppsFlyerIntegration validateNil: conversionInfo[@"adgroup"]]
+            };
+           
         
         NSMutableDictionary *properties = [NSMutableDictionary dictionaryWithDictionary:@{@"provider": @"AppsFlyer"}];
-        [properties addEntriesFromDictionary:installData];
+        [properties addEntriesFromDictionary:conversionInfo];
         
         // Delete already mapped special fields.
         [properties removeObjectForKey:@"media_source"];
@@ -197,16 +227,15 @@
         // If you are working with networks that don't allow passing user level data to 3rd parties,
         // you will need to apply code to filter out these networks before calling
         // `[self.analytics track:@"Install Attributed" properties:[properties copy]];`
-        [self.analytics track:@"Install Attributed" properties:[properties copy]];
+        [self.analytics track:@"Install Attributed" properties: [properties copy]];
         
-        [userDefaults setBool:YES forKey:key];
+      
     }
 }
 
--(void)onConversionDataRequestFailure:(NSError *) error
-{
-    if(_segDelegate && [_segDelegate respondsToSelector:@selector(onConversionDataRequestFailure:)]) {
-        [_segDelegate onConversionDataRequestFailure:error];
+- (void)onConversionDataFail:(nonnull NSError *)error {
+    if(_segDelegate && [_segDelegate respondsToSelector:@selector(onConversionDataFail:)]) {
+        [_segDelegate onConversionDataFail:error];
     }
     SEGLog(@"[Appsflyer] onConversionDataRequestFailure:%@]", error);
 }
@@ -227,9 +256,21 @@
     SEGLog(@"[Appsflyer] onAppOpenAttribution failure data: %@", error);
 }
 
-- (BOOL)trackAttributionData
+-(void)didResolveDeepLink:(AppsFlyerDeepLinkResult *_Nonnull)result
+{
+    if (_segDLDelegate && [_segDLDelegate respondsToSelector:@selector(didResolveDeepLink:)]) {
+        [_segDLDelegate didResolveDeepLink:result];
+    }
+    SEGLog(@"[Appsflyer] didResolveDeepLink result: %@", result);
+}
+
+
+
+
+- (BOOL)logAttributionData
 {
     return [(NSNumber *)[self.settings objectForKey:@"trackAttributionData"] boolValue];
 }
 
 @end
+

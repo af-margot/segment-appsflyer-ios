@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = "segment-appsflyer-ios"
-  s.version          = "1.3.2"
+  s.version          = "6.2.0"
   s.summary          = "AppsFlyer Integration for Segment's analytics-ios library."
 
   s.description      = <<-DESC
@@ -13,13 +13,25 @@ Pod::Spec.new do |s|
   s.source           = { :git => "https://github.com/AppsFlyerSDK/segment-appsflyer-ios.git", :tag => s.version.to_s }
   
 
-  s.ios.deployment_target = '7.0'
+  s.ios.deployment_target = '9.0'
   s.tvos.deployment_target = '9.0'
   s.requires_arc = true
   s.static_framework = true
 
-  s.dependency 'Analytics', '~> 3.5'
+  s.dependency 'Analytics'
   s.source_files = 'segment-appsflyer-ios/Classes/**/*'
-  s.ios.dependency 'AppsFlyerFramework', '4.10.4' 
-  s.tvos.dependency 'AppsFlyerFramework', '4.10.4'    
+
+  s.default_subspecs = 'Main'
+  s.subspec 'Main' do |ss|
+    ss.ios.dependency 'AppsFlyerFramework', '~> 6.2.0'
+    ss.tvos.dependency 'AppsFlyerFramework', '~> 6.2.0'
+  end
+  
+  s.subspec 'Strict' do |ss|
+    ss.ios.dependency 'AppsFlyerFramework/Strict', '~> 6.2.0'
+  end
+
+  s.subspec 'MacCatalyst' do |ss|
+    ss.ios.dependency 'AppsFlyerFramework/MacCatalyst', '~> 6.2.0'
+  end
 end
